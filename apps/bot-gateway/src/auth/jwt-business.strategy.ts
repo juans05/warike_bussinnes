@@ -15,7 +15,7 @@ export class JwtBusinessStrategy extends PassportStrategy(Strategy, 'jwt-busines
   constructor(config: ConfigService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      secretOrKey: config.get<string>('JWT_SECRET'),
+      secretOrKey: config.get<string>('JWT_SECRET') ?? '',
       audience: config.get<string>('JWT_AUDIENCE', 'warike-business'),
     });
   }
