@@ -8,7 +8,9 @@ export default new DataSource({
   port: Number(process.env.DB_PORT ?? 5432),
   username: process.env.DB_USERNAME ?? 'postgres',
   password: process.env.DB_PASSWORD,
-  database: process.env.DB_DATABASE ?? 'warike_business',
+  database: process.env.DB_DATABASE ?? 'wuarike_db',
+  schema: process.env.DB_SCHEMA ?? 'mesero_digital',
   entities: ['src/**/*.entity.ts'],
   migrations: ['src/migrations/*.ts'],
+  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
 });

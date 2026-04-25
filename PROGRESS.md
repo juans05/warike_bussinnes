@@ -146,5 +146,6 @@ d:/Github/warike_business/
 - **JWT Strategy**: tokens emitidos por WARIKE_BACKEND, validados por bot-gateway con `audience: warike-business`
 - **Feedback invariante**: no existe ningún endpoint que publique feedback a reseñas públicas de Wuarike
 - **n8n endpoints sin auth**: `POST /reservas`, `POST /pedidos`, `POST /feedback` — n8n se autentica por header secreto (configurar en n8n)
-- **Base de datos**: PostgreSQL `warike_business` — separada de `warike_backend`
-- **Migración pendiente**: ejecutar `pnpm migration:generate` y `pnpm migration:run` cuando PostgreSQL esté disponible
+- **Base de datos**: PostgreSQL `wuarike_db` — **misma DB que WARIKE_BACKEND**, schema separado `mesero_digital`
+- **Conexión**: Solo acepta desde localhost (VPS). En local se necesita tunnel SSH: `ssh -L 5433:localhost:5432 user@38.242.252.183`
+- **Migración pendiente**: Crear schema y ejecutar migraciones cuando bot-gateway esté desplegado en VPS
