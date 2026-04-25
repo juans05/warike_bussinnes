@@ -3,6 +3,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { AuthController } from './auth/auth.controller';
+import { CartaModule } from './carta/carta.module';
+import { ReservasModule } from './reservas/reservas.module';
+import { PedidosModule } from './pedidos/pedidos.module';
+import { FeedbackModule } from './feedback/feedback.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 
 @Module({
   imports: [
@@ -23,6 +28,11 @@ import { AuthController } from './auth/auth.controller';
       }),
     }),
     AuthModule,
+    CartaModule,
+    ReservasModule,
+    PedidosModule,
+    FeedbackModule,
+    WebhooksModule,
   ],
   controllers: [AuthController],
 })
