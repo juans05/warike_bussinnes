@@ -1,5 +1,7 @@
+import { Channel } from './restaurant.types';
+export { Channel };
+
 export type PedidoStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'cancelled';
-export type Channel = 'whatsapp' | 'web_widget' | 'wuarike_app';
 
 export interface PedidoLineItem {
   item_id: string;

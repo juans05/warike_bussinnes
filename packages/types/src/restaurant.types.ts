@@ -32,3 +32,5 @@ export interface ReservationConfig {
   max_advance_days: number;
   slots: string[];
 }
+
+export type Channel = 'whatsapp' | 'web_widget' | 'wuarike_app';

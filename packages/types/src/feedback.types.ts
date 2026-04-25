@@ -1,3 +1,5 @@
+import { Channel } from './restaurant.types';
+
 export type FeedbackStatus = 'pending' | 'noted' | 'resolved';
 
 export interface CreateFeedbackPayload {
@@ -5,7 +7,7 @@ export interface CreateFeedbackPayload {
   session_id?: string;
   message: string;
   sentiment_score: number;
-  channel: string;
+  channel: Channel;
   anonymous: boolean;
   customer_name?: string;
   customer_phone?: string;

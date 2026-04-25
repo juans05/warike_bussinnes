@@ -1,3 +1,5 @@
+import { Channel } from './restaurant.types';
+
 export type ReservaStatus = 'pending' | 'confirmed' | 'cancelled';
 
 export interface CreateReservaPayload {
@@ -8,7 +10,7 @@ export interface CreateReservaPayload {
   date: string;
   time: string;
   session_id: string;
-  channel: string;
+  channel: Channel;
 }
 
 export interface Reserva extends CreateReservaPayload {
