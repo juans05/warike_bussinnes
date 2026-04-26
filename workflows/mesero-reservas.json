@@ -1,0 +1,142 @@
+{
+  "name": "mesero-reservas",
+  "nodes": [
+    {
+      "parameters": { "inputSource": "passthrough" },
+      "id": "trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst sessionKey = `reserva_${data.sessionId}`;\nlet partial = {};\ntry {\n  const stored = $vars[sessionKey];\n  if (stored) partial = JSON.parse(stored);\n} catch(e) {}\n\nconst collected = Object.entries(partial).map(([k, v]) => `${k}: ${v}`).join(', ') || 'nada aun';\n\nconst reservaPrompt = `${data.systemPrompt}\\n\\nMODO RESERVA ACTIVO\\nDatos recopilados: ${collected}\\n\\nTu tarea: recopilar los datos faltantes en este orden:\\n1. Fecha (no pasada, maximo 30 dias en el futuro, formato YYYY-MM-DD)\\n2. Hora (slots disponibles: 12:00, 13:00, 19:00, 20:00, 21:00)\\n3. Numero de personas (minimo 1, maximo 10)\\n4. Nombre del cliente\\n5. Telefono de contacto\\n\\nCuando tengas TODOS los datos, muestra un resumen y pregunta Confirmo tu reserva?\\nSi el cliente confirma, termina con la linea exacta:\\nRESERVATION_CONFIRMED|fecha|hora|personas|nombre|telefono\\nEjemplo: RESERVATION_CONFIRMED|2026-04-26|19:00|4|Juan Garcia|999888777`;\n\nreturn [{ json: { ...data, reservaPrompt, partial, sessionKey } }];"
+      },
+      "id": "build-reserva-prompt",
+      "name": "Build Reservation Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1024, system: $json.reservaPrompt, messages: [{ role: 'user', content: $json.userMessage }] }) }}",
+        "options": {}
+      },
+      "id": "claude-reserva",
+      "name": "Claude Reservation Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const responseText = $input.first().json.content?.[0]?.text ?? '';\nconst confirmMatch = responseText.match(/RESERVATION_CONFIRMED\\|([^|]+)\\|([^|]+)\\|(\\d+)\\|([^|]+)\\|([^\\n]+)/);\nconst confirmed = !!confirmMatch;\nconst cleanText = responseText.replace(/RESERVATION_CONFIRMED\\|.*/, '').trim();\nconst prev = $('Build Reservation Prompt').first().json;\n\nreturn [{ json: {\n  ...prev,\n  botResponse: cleanText,\n  reservationConfirmed: confirmed,\n  reservationData: confirmed ? {\n    date: confirmMatch[1].trim(),\n    time: confirmMatch[2].trim(),\n    party_size: parseInt(confirmMatch[3]),\n    customer_name: confirmMatch[4].trim(),\n    customer_phone: confirmMatch[5].trim(),\n  } : null,\n} }];"
+      },
+      "id": "parse-reservation",
+      "name": "Parse Reservation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "version": 2 },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.reservationConfirmed }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ]
+        }
+      },
+      "id": "if-confirmed",
+      "name": "Is Reservation Confirmed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BOT_GATEWAY_URL + '/reservas' }}",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "content-type", "value": "application/json" },
+            { "name": "x-n8n-secret", "value": "={{ $env.N8N_WEBHOOK_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ restaurant_id: $json.restaurantId, session_id: $json.sessionId, channel: $json.channel, customer_name: $json.reservationData.customer_name, customer_phone: $json.reservationData.customer_phone, party_size: $json.reservationData.party_size, date: $json.reservationData.date, time: $json.reservationData.time }) }}",
+        "options": {}
+      },
+      "id": "create-reserva",
+      "name": "Create Reserva",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "const reservaId = $input.first().json.id ?? 'nueva';\nconst prev = $('Parse Reservation').first().json;\nconst rd = prev.reservationData;\nreturn [{ json: { ...prev, botResponse: `Reserva #${String(reservaId).slice(0,8)} confirmada\\nFecha: ${rd.date} a las ${rd.time} para ${rd.party_size} personas. Te esperamos, ${rd.customer_name}!` } }];"
+      },
+      "id": "confirmed-response",
+      "name": "Reserva Confirmed Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 180]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "msg", "name": "message", "value": "={{ $json.botResponse }}", "type": "string" },
+            { "id": "sid", "name": "session_id", "value": "={{ $json.sessionId }}", "type": "string" },
+            { "id": "int", "name": "intent", "value": "reserva", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "output",
+      "name": "Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1780, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": { "main": [[{ "node": "Build Reservation Prompt", "type": "main", "index": 0 }]] },
+    "Build Reservation Prompt": { "main": [[{ "node": "Claude Reservation Response", "type": "main", "index": 0 }]] },
+    "Claude Reservation Response": { "main": [[{ "node": "Parse Reservation", "type": "main", "index": 0 }]] },
+    "Parse Reservation": { "main": [[{ "node": "Is Reservation Confirmed?", "type": "main", "index": 0 }]] },
+    "Is Reservation Confirmed?": {
+      "main": [
+        [{ "node": "Create Reserva", "type": "main", "index": 0 }],
+        [{ "node": "Output", "type": "main", "index": 0 }]
+      ]
+    },
+    "Create Reserva": { "main": [[{ "node": "Reserva Confirmed Response", "type": "main", "index": 0 }]] },
+    "Reserva Confirmed Response": { "main": [[{ "node": "Output", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "meta": { "instanceId": "warike-mesero-reservas" }
+}

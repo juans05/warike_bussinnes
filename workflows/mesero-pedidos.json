@@ -1,0 +1,144 @@
+{
+  "name": "mesero-pedidos",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst sessionKey = `order_${data.sessionId}`;\nlet existingOrder = [];\ntry {\n  const stored = $vars[sessionKey];\n  if (stored) existingOrder = JSON.parse(stored);\n} catch(e) {}\n\nconst orderSummary = existingOrder.length\n  ? 'Pedido actual:\\n' + existingOrder.map(i => `- ${i.quantity}x ${i.name} S/. ${i.price}`).join('\\n')\n  : 'Pedido actual: vacio (el cliente aun no ha pedido nada)';\n\nconst orderPrompt = `${data.systemPrompt}\\n\\nMODO PEDIDO ACTIVO\\n${orderSummary}\\n\\nTu tarea: ayudar al cliente a completar su pedido.\\n- Si el cliente agrega algo, confirma el item y pregunta Algo mas?\\n- Si el cliente dice 'eso es todo' o 'confirmar' o 'listo': muestra resumen completo con total en S/. y pide confirmacion final.\\n- Si el cliente confirma el resumen: termina tu respuesta con la linea exacta: ORDER_CONFIRMED\\n- Si el cliente quiere cambiar algo: actualiza mentalmente el pedido.`;\n\nreturn [{ json: { ...data, orderPrompt, existingOrder, sessionKey } }];"
+      },
+      "id": "build-order-prompt",
+      "name": "Build Order Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1024, system: $json.orderPrompt, messages: [{ role: 'user', content: $json.userMessage }] }) }}",
+        "options": {}
+      },
+      "id": "claude-order",
+      "name": "Claude Order Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const responseText = $input.first().json.content?.[0]?.text ?? '';\nconst confirmed = responseText.includes('ORDER_CONFIRMED');\nconst cleanText = responseText.replace('ORDER_CONFIRMED', '').trim();\nconst prev = $('Build Order Prompt').first().json;\nreturn [{ json: { ...prev, botResponse: cleanText, orderConfirmed: confirmed } }];"
+      },
+      "id": "check-confirmed",
+      "name": "Check Order Confirmed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "version": 2 },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.orderConfirmed }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ]
+        }
+      },
+      "id": "if-confirmed",
+      "name": "Is Order Confirmed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BOT_GATEWAY_URL + '/pedidos' }}",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "content-type", "value": "application/json" },
+            { "name": "x-n8n-secret", "value": "={{ $env.N8N_WEBHOOK_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ restaurant_id: $json.restaurantId, session_id: $json.sessionId, channel: $json.channel, items: $json.existingOrder, total: $json.existingOrder.reduce((s, i) => s + (i.price * (i.quantity || 1)), 0) }) }}",
+        "options": {}
+      },
+      "id": "create-pedido",
+      "name": "Create Pedido",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pedidoId = $input.first().json.id ?? 'nuevo';\nconst prev = $('Check Order Confirmed').first().json;\nreturn [{ json: { ...prev, botResponse: `Pedido #${String(pedidoId).slice(0,8)} confirmado! Tiempo estimado: ~20 min` } }];"
+      },
+      "id": "confirmed-response",
+      "name": "Pedido Confirmed Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 180]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "msg", "name": "message", "value": "={{ $json.botResponse }}", "type": "string" },
+            { "id": "sid", "name": "session_id", "value": "={{ $json.sessionId }}", "type": "string" },
+            { "id": "int", "name": "intent", "value": "pedido", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "output",
+      "name": "Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1780, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": { "main": [[{ "node": "Build Order Prompt", "type": "main", "index": 0 }]] },
+    "Build Order Prompt": { "main": [[{ "node": "Claude Order Response", "type": "main", "index": 0 }]] },
+    "Claude Order Response": { "main": [[{ "node": "Check Order Confirmed", "type": "main", "index": 0 }]] },
+    "Check Order Confirmed": { "main": [[{ "node": "Is Order Confirmed?", "type": "main", "index": 0 }]] },
+    "Is Order Confirmed?": {
+      "main": [
+        [{ "node": "Create Pedido", "type": "main", "index": 0 }],
+        [{ "node": "Output", "type": "main", "index": 0 }]
+      ]
+    },
+    "Create Pedido": { "main": [[{ "node": "Pedido Confirmed Response", "type": "main", "index": 0 }]] },
+    "Pedido Confirmed Response": { "main": [[{ "node": "Output", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "meta": { "instanceId": "warike-mesero-pedidos" }
+}

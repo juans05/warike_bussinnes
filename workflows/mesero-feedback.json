@@ -1,0 +1,95 @@
+{
+  "name": "mesero-feedback",
+  "nodes": [
+    {
+      "parameters": { "inputSource": "passthrough" },
+      "id": "trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst customerName = data.customerName ?? 'estimado cliente';\nconst msg = data.userMessage.toLowerCase();\nconst consented = /\\b(s[ii]|yes|ok|claro|dale|por favor|quiero|acepto)\\b/.test(msg);\n\nconst isFollowUp = $vars[`feedback_asked_${data.sessionId}`] === 'true';\n\nif (!isFollowUp) {\n  return [{ json: {\n    ...data,\n    botResponse: `Lamento mucho eso, ${customerName}. Tu experiencia nos importa muchisimo. Me permites conectarte con el encargado para resolverlo personalmente? (responde si o no)`,\n    feedbackPhase: 'ask_consent',\n  } }];\n}\n\nconst payload = {\n  restaurant_id: data.restaurantId,\n  session_id: data.sessionId,\n  message: data.userMessage,\n  sentiment_score: 0.1,\n  channel: data.channel,\n  anonymous: !consented,\n  customer_name: consented && data.customerName ? data.customerName : undefined,\n};\n\nconst botResponse = consented\n  ? 'Gracias por contarmelo. El encargado te contactara en menos de 2 horas.'\n  : 'Entiendo. Hay algo mas en lo que te pueda ayudar?';\n\nreturn [{ json: { ...data, feedbackPayload: payload, botResponse, feedbackPhase: 'save' } }];"
+      },
+      "id": "handle-feedback",
+      "name": "Handle Feedback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "version": 2 },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.feedbackPhase }}",
+              "rightValue": "save",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "if-save",
+      "name": "Should Save Feedback?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BOT_GATEWAY_URL + '/feedback' }}",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "content-type", "value": "application/json" },
+            { "name": "x-n8n-secret", "value": "={{ $env.N8N_WEBHOOK_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.feedbackPayload) }}",
+        "options": {}
+      },
+      "id": "save-feedback",
+      "name": "POST Feedback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 180]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "msg", "name": "message", "value": "={{ $json.botResponse }}", "type": "string" },
+            { "id": "sid", "name": "session_id", "value": "={{ $json.sessionId }}", "type": "string" },
+            { "id": "int", "name": "intent", "value": "queja", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "output",
+      "name": "Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": { "main": [[{ "node": "Handle Feedback", "type": "main", "index": 0 }]] },
+    "Handle Feedback": { "main": [[{ "node": "Should Save Feedback?", "type": "main", "index": 0 }]] },
+    "Should Save Feedback?": {
+      "main": [
+        [{ "node": "POST Feedback", "type": "main", "index": 0 }],
+        [{ "node": "Output", "type": "main", "index": 0 }]
+      ]
+    },
+    "POST Feedback": { "main": [[{ "node": "Output", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "meta": { "instanceId": "warike-mesero-feedback" }
+}

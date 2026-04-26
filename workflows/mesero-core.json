@@ -1,0 +1,179 @@
+{
+  "name": "mesero-core",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chat",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "mesero-chat"
+    },
+    {
+      "parameters": {
+        "jsCode": "const secret = $input.first().json.headers['x-webhook-secret'];\nconst expected = $env.N8N_WEBHOOK_SECRET;\nif (!expected || secret !== expected) {\n  throw new Error('Unauthorized: invalid webhook secret');\n}\nreturn $input.all();"
+      },
+      "id": "validate-secret",
+      "name": "Validate Secret",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BOT_GATEWAY_URL + '/carta/' + $json.body.restaurant_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "credentials": {
+          "httpHeaderAuth": {
+            "name": "Bot Gateway Service Account"
+          }
+        },
+        "options": {}
+      },
+      "id": "load-carta",
+      "name": "Load Carta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $('Webhook').first().json.body;\nconst carta = $input.first().json;\n\nconst cartaSummary = (Array.isArray(carta) ? carta : []).map(item => {\n  const allergenStr = item.allergens?.length ? `Alergenos: ${item.allergens.join(', ')}` : 'Sin alergenos';\n  const rec = item.is_chef_recommendation ? ' RECOMENDACION DEL CHEF' : '';\n  const avail = item.available ? '' : ' [NO DISPONIBLE HOY]';\n  return `- ${item.name}${rec}${avail}: S/. ${item.price}. ${item.description || ''}. ${allergenStr}`;\n}).join('\\n') || 'Carta no disponible';\n\nconst now = new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' });\n\nconst systemPrompt = `Eres el mesero digital de este restaurante. Tono: amigable, espanol peruano natural.\\n\\nMISION: Ayudar al cliente con: explorar la carta, hacer un pedido, hacer una reserva, resolver dudas sobre alergenos.\\n\\nLA CARTA:\\n${cartaSummary}\\n\\nREGLAS (nunca las rompas):\\n1. Solo hablas sobre este restaurante.\\n2. Si un plato tiene [NO DISPONIBLE HOY], dilo y sugiere alternativas.\\n3. NUNCA inventes precios ni ingredientes.\\n4. Para alergenos: confirma cada ingrediente explicitamente.\\n5. Si detectas insatisfaccion o queja: di exactamente 'Lamento mucho eso. Me permites conectarte con el encargado?' y NUNCA sugieras resenas publicas.\\n6. Maximo 3 oraciones por respuesta. Maximo 2 emojis.\\n7. Al mostrar precios usa S/. siempre.\\n\\nDETECTAR INTENCION: Al inicio de tu respuesta incluye (invisible para el cliente):\\nINTENT: <consulta_carta|pedido|reserva|queja|saludo|otro>\\n\\nCONTEXTO:\\nFecha/hora Lima: ${now}\\nCanal: ${body.channel}\\n${body.customer_name ? `Cliente: ${body.customer_name}` : ''}`;\n\nreturn [{\n  json: {\n    systemPrompt,\n    userMessage: body.message,\n    sessionId: body.session_id,\n    restaurantId: body.restaurant_id,\n    channel: body.channel,\n    customerName: body.customer_name ?? null,\n  }\n}];"
+      },
+      "id": "build-system-prompt",
+      "name": "Build System Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 600, system: $json.systemPrompt, messages: [{ role: 'user', content: $json.userMessage }] }) }}",
+        "options": {}
+      },
+      "id": "detect-intent",
+      "name": "Detect Intent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawText = $input.first().json.content?.[0]?.text ?? '';\nconst intentMatch = rawText.match(/INTENT:\\s*([\\w_]+)/i);\nconst intent = intentMatch ? intentMatch[1].toLowerCase() : 'otro';\nconst cleanResponse = rawText.replace(/INTENT:\\s*[\\w_]+\\n?/i, '').trim();\nconst prev = $('Build System Prompt').first().json;\nreturn [{ json: { ...prev, intent, botResponse: cleanResponse } }];"
+      },
+      "id": "parse-intent",
+      "name": "Parse Intent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "conditions": { "options": { "version": 2 }, "conditions": [{ "leftValue": "={{ $json.intent }}", "rightValue": "pedido", "operator": { "type": "string", "operation": "equals" } }] }, "renameOutput": true, "outputKey": "pedido" },
+            { "conditions": { "options": { "version": 2 }, "conditions": [{ "leftValue": "={{ $json.intent }}", "rightValue": "reserva", "operator": { "type": "string", "operation": "equals" } }] }, "renameOutput": true, "outputKey": "reserva" },
+            { "conditions": { "options": { "version": 2 }, "conditions": [{ "leftValue": "={{ $json.intent }}", "rightValue": "queja", "operator": { "type": "string", "operation": "equals" } }] }, "renameOutput": true, "outputKey": "queja" }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "route-intent",
+      "name": "Route by Intent",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "mode": "name", "value": "mesero-pedidos" },
+        "workflowInputs": { "mappingMode": "defineBelow", "value": { "sessionId": "={{ $json.sessionId }}", "restaurantId": "={{ $json.restaurantId }}", "channel": "={{ $json.channel }}", "customerName": "={{ $json.customerName }}", "userMessage": "={{ $json.userMessage }}", "systemPrompt": "={{ $json.systemPrompt }}" } }
+      },
+      "id": "exec-pedidos",
+      "name": "Execute Pedidos",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1780, 180]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "mode": "name", "value": "mesero-reservas" },
+        "workflowInputs": { "mappingMode": "defineBelow", "value": { "sessionId": "={{ $json.sessionId }}", "restaurantId": "={{ $json.restaurantId }}", "channel": "={{ $json.channel }}", "customerName": "={{ $json.customerName }}", "userMessage": "={{ $json.userMessage }}", "systemPrompt": "={{ $json.systemPrompt }}" } }
+      },
+      "id": "exec-reservas",
+      "name": "Execute Reservas",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "mode": "name", "value": "mesero-feedback" },
+        "workflowInputs": { "mappingMode": "defineBelow", "value": { "sessionId": "={{ $json.sessionId }}", "restaurantId": "={{ $json.restaurantId }}", "channel": "={{ $json.channel }}", "customerName": "={{ $json.customerName }}", "userMessage": "={{ $json.userMessage }}", "systemPrompt": "={{ $json.systemPrompt }}" } }
+      },
+      "id": "exec-feedback",
+      "name": "Execute Feedback",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1780, 420]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "msg", "name": "message", "value": "={{ $json.botResponse }}", "type": "string" },
+            { "id": "sid", "name": "session_id", "value": "={{ $json.sessionId }}", "type": "string" },
+            { "id": "int", "name": "intent", "value": "={{ $json.intent }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2000, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Validate Secret", "type": "main", "index": 0 }]] },
+    "Validate Secret": { "main": [[{ "node": "Load Carta", "type": "main", "index": 0 }]] },
+    "Load Carta": { "main": [[{ "node": "Build System Prompt", "type": "main", "index": 0 }]] },
+    "Build System Prompt": { "main": [[{ "node": "Detect Intent", "type": "main", "index": 0 }]] },
+    "Detect Intent": { "main": [[{ "node": "Parse Intent", "type": "main", "index": 0 }]] },
+    "Parse Intent": { "main": [[{ "node": "Route by Intent", "type": "main", "index": 0 }]] },
+    "Route by Intent": {
+      "main": [
+        [{ "node": "Execute Pedidos", "type": "main", "index": 0 }],
+        [{ "node": "Execute Reservas", "type": "main", "index": 0 }],
+        [{ "node": "Execute Feedback", "type": "main", "index": 0 }],
+        [{ "node": "Format Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Execute Pedidos": { "main": [[{ "node": "Format Response", "type": "main", "index": 0 }]] },
+    "Execute Reservas": { "main": [[{ "node": "Format Response", "type": "main", "index": 0 }]] },
+    "Execute Feedback": { "main": [[{ "node": "Format Response", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "meta": { "instanceId": "warike-mesero-core" }
+}
