@@ -3,6 +3,7 @@
 **Proyecto:** `warike_business` — Monorepo B2B para restaurantes (Wuarike Ecosystem)
 **Directorio:** `d:/Github/warike_business/`
 **Fecha de último avance:** 2026-04-25
+**Repositorio GitHub:** https://github.com/juans05/warike_bussinnes
 
 ---
 
@@ -11,8 +12,10 @@
 | Plan | Descripción | Estado |
 |------|-------------|--------|
 | Plan 1/3 | Foundation: Monorepo + Types + Bot-Gateway | ✅ COMPLETO |
+| Extra | Arquitectura dirigida por eventos (Event-Driven) | ✅ COMPLETO |
 | Plan 2/3 | Dashboard: Next.js 14 + shadcn/ui | ⏳ Pendiente |
 | Plan 3/3 | n8n AI Workflows (4 flujos) | ⏳ Pendiente |
+| Deploy | Railway (bot-gateway) + n8n workflows | ⏳ Pendiente |
 
 ---
 
@@ -118,6 +121,71 @@ d:/Github/warike_business/
 
 ---
 
+## Arquitectura Event-Driven (COMPLETO)
+
+### Objetivo
+Agregar event-driven architecture al bot-gateway para soportar:
+- Notificaciones al crear pedidos / reservas / feedback
+- Auditoría de cambios (`event_log` en PostgreSQL)
+- Dashboard en tiempo real vía SSE (Server-Sent Events)
+
+### Commits realizados
+
+| Commit | Descripción |
+|--------|-------------|
+| `cc7909c` | feat(bot-gateway): install @nestjs/event-emitter y registrar EventEmitterModule |
+| `093b0b6` | chore: update lockfile y fix types package name (@warike-business/types) |
+| `0dbcdfa` | feat(bot-gateway): add typed domain event classes |
+| `84815c1` | feat(pedidos): emit PedidoCreatedEvent y PedidoStatusChangedEvent |
+| `7b1d453` | feat(reservas): emit ReservaCreatedEvent, ReservaConfirmedEvent, ReservaCancelledEvent |
+| `cfa2293` | feat(feedback): emit FeedbackReceivedEvent y FeedbackResolvedEvent |
+| `a660c95` | feat(audit): AuditLog entity, migration y AuditListener para todos los eventos |
+| `5eef307` | feat(dashboard): SSE endpoint y NotificationsListener para eventos en tiempo real |
+| `9b02352` | fix: address code review issues (audit listener, dashboard controller, migration) |
+| `dfe61fb` | feat(auth): accept JWT via ?token= query param para SSE connections |
+| `099000e` | chore: replace hardcoded API key con placeholder en DEPLOY.md |
+
+### Tareas completadas
+
+- [x] **Task 1** — Instalar `@nestjs/event-emitter` + registrar `EventEmitterModule.forRoot()`
+- [x] **Task 2** — 7 clases de eventos de dominio tipados + constante `EVENTS`
+- [x] **Task 3** — `PedidosService` emite `PedidoCreatedEvent` y `PedidoStatusChangedEvent`
+- [x] **Task 4** — `ReservasService` emite `ReservaCreatedEvent`, `ReservaConfirmedEvent`, `ReservaCancelledEvent`
+- [x] **Task 5** — `FeedbackService` emite `FeedbackReceivedEvent` y `FeedbackResolvedEvent`
+- [x] **Task 6** — Entidad `AuditLog` + migración PostgreSQL (tabla `event_log`)
+- [x] **Task 7** — `AuditListener`: persiste los 7 eventos en `event_log` (no-blocking con `.catch()`)
+- [x] **Task 8** — `NotificationsListener`: extensión para SMS/push/email (Logger por ahora)
+- [x] **Task 9** — `DashboardService` (RxJS `Subject`) + `DashboardController` (`@Sse` endpoint)
+- [x] **Task 10** — JWT dual extraction: header Bearer + `?token=` query param para EventSource API
+
+### Flujo de eventos
+
+```
+POST /pedidos → PedidosService.create()
+  ├── AuditListener      → INSERT en event_log (PostgreSQL)
+  ├── NotificationsListener → Logger (extensible a SMS/push/email)
+  └── DashboardService   → Subject.next() → SSE → Frontend dashboard
+```
+
+### Nuevo endpoint SSE
+
+| Método | Endpoint | Auth | Descripción |
+|--------|----------|------|-------------|
+| GET | `/dashboard/stream/:restaurantId` | JWT (`?token=`) | Stream SSE en tiempo real |
+
+### Tests
+
+```
+Test Suites: 5 passed, 5 total
+Tests:       15 passed, 15 total
+```
+
+### GitHub
+
+Código publicado en: https://github.com/juans05/warike_bussinnes (rama `master`)
+
+---
+
 ## Próximos pasos
 
 ### Plan 2/3 — Dashboard Next.js 14
@@ -133,11 +201,23 @@ d:/Github/warike_business/
 
 **VPS:** `38.242.252.183` — n8n self-hosted ya instalado
 
-4 workflows JSON para importar en n8n:
-1. `mesero-core` — orquestación principal + Claude claude-sonnet-4-6 system prompt
-2. `mesero-pedidos` — flujo de toma de pedidos
-3. `mesero-reservas` — flujo de reservas
-4. `mesero-feedback` — flujo de feedback privado
+4 workflows JSON listos para importar en n8n (`workflows/`):
+1. `mesero-core.json` — orquestación principal + Claude claude-sonnet-4-6 system prompt
+2. `mesero-pedidos.json` — flujo de toma de pedidos
+3. `mesero-reservas.json` — flujo de reservas
+4. `mesero-feedback.json` — flujo de feedback privado
+
+Ver instrucciones completas en [DEPLOY.md](DEPLOY.md)
+
+### Deploy — Railway + n8n
+
+- [ ] `railway init` + `railway up` desde `d:/Github/warike_business`
+- [ ] Agregar PostgreSQL add-on en Railway
+- [ ] Configurar variables de entorno en Railway (ver DEPLOY.md §1.4)
+- [ ] Copiar URL pública de Railway para usarla en n8n
+- [ ] Importar 4 workflows en n8n (`http://38.242.252.183:5678`)
+- [ ] Activar cada workflow con toggle ON
+- [ ] Test end-to-end con `curl` (ver DEPLOY.md §3)
 
 ---
 
