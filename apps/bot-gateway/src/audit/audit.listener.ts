@@ -27,43 +27,57 @@ export class AuditListener {
       event_name: eventName,
       restaurant_id: restaurantId,
       entity_id: entityId,
-      payload: payload as unknown as Record<string, unknown>,
+      payload: JSON.parse(JSON.stringify(payload)) as Record<string, unknown>,
     });
     await this.auditRepo.save(entry);
   }
 
   @OnEvent(EVENTS.PEDIDO_CREATED)
   onPedidoCreated(ev: PedidoCreatedEvent) {
-    return this.log(EVENTS.PEDIDO_CREATED, ev.id, ev.restaurant_id, ev);
+    this.log(EVENTS.PEDIDO_CREATED, ev.id, ev.restaurant_id, ev).catch(err =>
+      console.error('[AuditListener] Failed to persist audit log:', err),
+    );
   }
 
   @OnEvent(EVENTS.PEDIDO_STATUS_CHANGED)
   onPedidoStatusChanged(ev: PedidoStatusChangedEvent) {
-    return this.log(EVENTS.PEDIDO_STATUS_CHANGED, ev.id, ev.restaurant_id, ev);
+    this.log(EVENTS.PEDIDO_STATUS_CHANGED, ev.id, ev.restaurant_id, ev).catch(err =>
+      console.error('[AuditListener] Failed to persist audit log:', err),
+    );
   }
 
   @OnEvent(EVENTS.RESERVA_CREATED)
   onReservaCreated(ev: ReservaCreatedEvent) {
-    return this.log(EVENTS.RESERVA_CREATED, ev.id, ev.restaurant_id, ev);
+    this.log(EVENTS.RESERVA_CREATED, ev.id, ev.restaurant_id, ev).catch(err =>
+      console.error('[AuditListener] Failed to persist audit log:', err),
+    );
   }
 
   @OnEvent(EVENTS.RESERVA_CONFIRMED)
   onReservaConfirmed(ev: ReservaConfirmedEvent) {
-    return this.log(EVENTS.RESERVA_CONFIRMED, ev.id, ev.restaurant_id, ev);
+    this.log(EVENTS.RESERVA_CONFIRMED, ev.id, ev.restaurant_id, ev).catch(err =>
+      console.error('[AuditListener] Failed to persist audit log:', err),
+    );
   }
 
   @OnEvent(EVENTS.RESERVA_CANCELLED)
   onReservaCancelled(ev: ReservaCancelledEvent) {
-    return this.log(EVENTS.RESERVA_CANCELLED, ev.id, ev.restaurant_id, ev);
+    this.log(EVENTS.RESERVA_CANCELLED, ev.id, ev.restaurant_id, ev).catch(err =>
+      console.error('[AuditListener] Failed to persist audit log:', err),
+    );
   }
 
   @OnEvent(EVENTS.FEEDBACK_RECEIVED)
   onFeedbackReceived(ev: FeedbackReceivedEvent) {
-    return this.log(EVENTS.FEEDBACK_RECEIVED, ev.id, ev.restaurant_id, ev);
+    this.log(EVENTS.FEEDBACK_RECEIVED, ev.id, ev.restaurant_id, ev).catch(err =>
+      console.error('[AuditListener] Failed to persist audit log:', err),
+    );
   }
 
   @OnEvent(EVENTS.FEEDBACK_RESOLVED)
   onFeedbackResolved(ev: FeedbackResolvedEvent) {
-    return this.log(EVENTS.FEEDBACK_RESOLVED, ev.id, ev.restaurant_id, ev);
+    this.log(EVENTS.FEEDBACK_RESOLVED, ev.id, ev.restaurant_id, ev).catch(err =>
+      console.error('[AuditListener] Failed to persist audit log:', err),
+    );
   }
 }
