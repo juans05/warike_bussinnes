@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
+import { Request } from 'express';
 
 export interface JwtBusinessPayload {
   sub: string;
@@ -14,7 +15,10 @@ export interface JwtBusinessPayload {
 export class JwtBusinessStrategy extends PassportStrategy(Strategy, 'jwt-business') {
   constructor(config: ConfigService) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        (req: Request) => (req?.query?.token as string) ?? null,
+      ]),
       secretOrKey: config.get<string>('JWT_SECRET') ?? '',
       audience: config.get<string>('JWT_AUDIENCE', 'warike-business'),
     });
