@@ -1,5 +1,5 @@
 import { Channel } from './restaurant.types';
-export { Channel };
+export type { Channel };
 
 export type PedidoStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'cancelled';
 
