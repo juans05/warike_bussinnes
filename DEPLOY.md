@@ -51,7 +51,7 @@ Abre n8n en `http://38.242.252.183:5678`
 Settings → Environment Variables:
 
 ```
-ANTHROPIC_API_KEY=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
+ANTHROPIC_API_KEY=TU_ANTHROPIC_API_KEY
 BOT_GATEWAY_URL=https://bot-gateway-production.up.railway.app
 N8N_WEBHOOK_SECRET=warike-n8n-secret-2026
 ```
